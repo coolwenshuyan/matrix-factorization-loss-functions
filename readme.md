@@ -1,27 +1,94 @@
 ## 一、整体代码架构流程
 
+# 矩阵分解损失函数优化
+
+基于混合分段损失函数(HPL)增强矩阵分解的推荐系统实现。本项目实现了多种损失函数，包括创新的 HPL 损失函数，并通过实验证明其在推荐系统中的优越性能。
+
+## 项目背景
+
+传统矩阵分解模型通常使用 L2 损失函数，但在处理噪声数据和异常值时表现不佳。本项目提出并实现了混合分段损失函数(HPL)，结合了多种损失函数的优点，提高了模型的鲁棒性和预测精度。
+
+## 项目结构
+
 ### 1. **项目结构设计**
 
 ```
 project/
 ├── data/                    # 数据集存放
 ├── src/                     # 源代码
-│   ├── models/             # 模型实现
-│   ├── losses/             # 损失函数实现
-│   ├── training/           # 训练器模块 (第4步) ← 新增
-│   │   ├── __init__.py
-│   │   ├── trainer.py      # 主训练器类
-│   │   ├── optimizers.py   # 优化器实现
-│   │   ├── schedulers.py   # 学习率调度器
-│   │   ├── callbacks.py    # 回调函数系统
-│   │   ├── early_stopping.py # 早停机制
-│   │   └── utils.py        # 训练工具函数
-│   ├── utils/              # 工具函数
-│   ├── evaluation/         # 评估指标
-│   └── experiments/        # 实验脚本
-├── configs/                # 配置文件
-├── results/                # 实验结果
-└── notebooks/              # 分析和可视化
+project/
+├── configs/ # 配置文件目录
+├── data/ # 数据处理模块
+│ ├── dataset.py # 数据集基类和实现
+│ ├── data_manager.py # 数据管理器
+│ ├── iterator.py # 批处理迭代器
+│ ├── loader.py # 数据加载器
+│ ├── preprocessor.py # 数据预处理
+│ └── readme.md # 数据模块说明
+├── dataset/ # 数据集存放目录
+│ ├── 20201202M100K_data_all_random.txt # MovieLens 100K数据集
+│ ├── 20201202NetFlix_data_all_random.txt # Netflix数据集
+│ ├── Amazon_Musical_Instruments20220608random.txt # 亚马逊乐器数据集
+│ ├── ciaodvd20220530random.txt # CiaoDVD数据集
+│ ├── Epinions20220531random.txt # Epinions数据集
+│ ├── flimtrust20220604random.txt # FilmTrust数据集
+│ ├── moive1M20221009randombigthan20bigthan20userbigandeq300.txt # MovieLens 1M数据集
+│ └── moivetweetings20220511random.txt # MovieTweetings数据集
+├── notebooks/ # Jupyter笔记本目录
+├── results/ # 实验结果目录
+├── src/ # 源代码目录
+│ ├── evaluation/ # 评估模块
+│ │ ├── evaluator.py # 评估器
+│ │ ├── metrics.py # 评估指标
+│ │ ├── ranking.py # 排序评估
+│ │ ├── statistical.py # 统计分析
+│ │ └── utils.py # 评估工具
+│ ├── experiments/ # 实验管理模块
+│ │ ├── baseline_manager.py # 基线模型管理
+│ │ ├── config_manager.py # 配置管理
+│ │ ├── experiment_runner.py # 实验运行器
+│ │ ├── report_generator.py # 报告生成
+│ │ ├── reproducibility.py # 复现性保证
+│ │ ├── results_analyzer.py # 结果分析
+│ │ ├── significance_test.py # 统计检验
+│ │ └── workflow.py # 工作流管理
+│ ├── hyperopt/ # 超参数优化模块
+│ │ ├── constraints.py # 约束条件
+│ │ ├── optimizer.py # 优化器
+│ │ ├── parallel.py # 并行执行
+│ │ ├── sampler.py # 参数采样
+│ │ ├── space.py # 参数空间
+│ │ ├── tracker.py # 实验追踪
+│ │ └── utils.py # 工具函数
+│ ├── losses/ # 损失函数模块
+│ │ ├── base.py # 损失函数基类
+│ │ ├── hpl.py # HPL损失函数
+│ │ ├── robust.py # 鲁棒损失函数
+│ │ ├── sigmoid.py # Sigmoid类损失函数
+│ │ ├── standard.py # 标准损失函数
+│ │ └── utils.py # 损失函数工具
+│ ├── models/ # 模型模块
+│ │ ├── base_mf.py # 矩阵分解基类
+│ │ ├── initializers.py # 参数初始化
+│ │ ├── mf_sgd.py # SGD矩阵分解
+│ │ └── regularizers.py # 正则化器
+│ ├── training/ # 训练模块
+│ │ ├── callbacks.py # 回调函数
+│ │ ├── early_stopping.py # 早停机制
+│ │ ├── optimizers.py # 优化器
+│ │ ├── schedulers.py # 学习率调度器
+│ │ ├── trainer.py # 训练器
+│ │ └── utils.py # 训练工具
+│ ├── utils/ # 通用工具模块
+│ └── visualization/ # 可视化模块
+│ ├── convergence_plots.py # 收敛曲线图
+│ ├── distribution_plots.py # 分布图
+│ ├── parameter_plots.py # 参数分析图
+│ ├── performance_plots.py # 性能对比图
+│ ├── plot_config.py # 绘图配置
+│ ├── robustness_plots.py # 鲁棒性分析图
+│ └── table_formatter.py # 表格格式化
+└── .gitignore # Git忽略文件
 
 ### 2. **代码模块依赖关系**
 
@@ -224,3 +291,4 @@ project/
 6. **实验管理**：使用版本控制和实验跟踪工具
 
 按照这个流程和步骤，你可以系统地完成整个实验代码的编写。建议先从最核心的部分开始，逐步扩展到完整的实验系统。
+```
