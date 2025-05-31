@@ -50,3 +50,6 @@ results/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 预处理数据目录
+preprocessed_data/

@@ -40,6 +40,10 @@ class DatasetLoader:
         # 标准化数据集名称
         name_lower = name.lower().replace('-', '').replace('_', '')
         
+        # 调试信息
+        print(f"DEBUG: 尝试加载数据集 '{name_lower}'")
+        print(f"DEBUG: 当前注册的数据集: {list(cls.DATASET_REGISTRY.keys())}")
+        
         # 自动识别数据集类型
         dataset_class = cls._identify_dataset_type(name_lower, path)
         

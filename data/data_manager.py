@@ -273,18 +273,20 @@ class DataManager:
             'item_id_inverse_map': self.item_id_inverse_map
         }
         with open(save_path / 'mappings.json', 'w') as f:
-            # 转换键为字符串（JSON要求）
+            # 转换键为字符串（JSON要求）并确保值是Python原生类型
             json_mappings = {}
             for key, mapping in mappings.items():
                 if mapping is not None:
-                    json_mappings[key] = {str(k): v for k, v in mapping.items()}
+                    json_mappings[key] = {str(k): int(v) if isinstance(v, np.integer) else v 
+                                         for k, v in mapping.items()}
             json.dump(json_mappings, f)
         
         # 保存配置和统计信息
         metadata = {
             'config': self.config,
-            'statistics': self.statistics,
-            'global_mean': self.global_mean,
+            'statistics': {k: int(v) if isinstance(v, np.integer) else float(v) if isinstance(v, np.floating) else v 
+                          for k, v in self.statistics.items()},
+            'global_mean': float(self.global_mean) if self.global_mean is not None else None,
             'dataset_name': self.dataset.name if self.dataset else None
         }
         with open(save_path / 'metadata.json', 'w') as f:
