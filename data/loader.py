@@ -2,7 +2,7 @@
 import logging
 from typing import Dict, Type, Optional
 from pathlib import Path
-from dataset import *
+from .dataset import BaseDataset, MovieLens100K, MovieLens1M, Netflix, AmazonMI, CiaoDVD, Epinions, FilmTrust, MovieTweetings
 
 logger = logging.getLogger(__name__)
 

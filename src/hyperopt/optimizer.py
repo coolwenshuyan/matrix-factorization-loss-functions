@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .space import ParameterSpace
-from .sampler import Sampler, RandomSampler
+from .samplers import Sampler, RandomSampler
 from .constraints import ConstraintManager
 from .parallel import ParallelExecutor
 from .tracker import ExperimentTracker

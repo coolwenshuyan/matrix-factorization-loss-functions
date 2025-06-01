@@ -18,18 +18,18 @@ class L2Loss(BaseLoss):
     def forward(self, predictions: np.ndarray, targets: np.ndarray) -> float:
         """计算L2损失"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
-        loss = 0.5 * np.mean(errors ** 2)
-        
+        loss = np.mean(errors ** 2)  # MSE，不是0.5*MSE
+
         return float(loss)
-    
+
     def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算L2损失的梯度"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
-        return errors
+        return 2 * errors / len(errors)  # 2 * (pred - target) / n
     
     def hessian(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """L2损失的二阶导数是常数1"""
@@ -67,17 +67,17 @@ class L1Loss(BaseLoss):
     def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算L1损失的梯度"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
-        
+
         # 处理e=0的情况
         # 使用次梯度：在0处返回0
-        grad = np.sign(errors)
-        
+        grad = np.sign(errors) / len(errors)  # sign(pred - target) / n
+
         # 可选：平滑处理（类似于Smooth L1）
         # mask = np.abs(errors) < self.epsilon
         # grad[mask] = errors[mask] / self.epsilon
-        
+
         return grad
     
     def is_differentiable_at(self, x: float) -> bool:

@@ -1,333 +1,351 @@
 """
-采样策略实现模块
+参数空间定义模块
 
-提供多种超参数采样策略
+提供超参数空间的定义和管理功能
 """
 
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Any, Union, Callable
 from abc import ABC, abstractmethod
-from .space import ParameterSpace
-import warnings
-
-# 尝试导入可选依赖
-try:
-    from scipy.stats import qmc
-    HAS_SCIPY = True
-except ImportError:
-    HAS_SCIPY = False
-    warnings.warn("scipy未安装，部分高级采样器不可用")
 
 
-class Sampler(ABC):
-    """采样器基类"""
+class Parameter(ABC):
+    """参数基类"""
     
-    def __init__(self, space: ParameterSpace, seed: Optional[int] = None):
-        self.space = space
-        self.random_state = np.random.RandomState(seed)
-        self.history: List[Dict] = []
+    def __init__(self, name: str):
+        self.name = name
         
     @abstractmethod
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """生成n个采样点"""
+    def sample(self, random_state: np.random.RandomState) -> Any:
+        """采样一个值"""
         pass
     
-    def update(self, configs: List[Dict], scores: List[float]):
-        """更新采样器状态（用于自适应采样）"""
-        for config, score in zip(configs, scores):
-            self.history.append({'config': config, 'score': score})
-
-
-class RandomSampler(Sampler):
-    """随机采样器"""
+    @abstractmethod
+    def normalize(self, value: Any) -> float:
+        """将值归一化到[0,1]"""
+        pass
     
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """完全随机采样"""
-        samples = []
-        for _ in range(n_samples):
-            config = self.space.sample(self.random_state)
-            samples.append(config)
-        return samples
+    @abstractmethod
+    def denormalize(self, normalized_value: float) -> Any:
+        """将归一化值转换回原始值"""
+        pass
 
 
-class GridSampler(Sampler):
-    """网格采样器"""
+class ContinuousParameter(Parameter):
+    """连续参数"""
     
-    def __init__(self, space: ParameterSpace, 
-                 resolution: Union[int, Dict[str, int]] = 10,
-                 seed: Optional[int] = None):
-        super().__init__(space, seed)
-        self.resolution = resolution
-        self._grid_points = None
-        self._current_idx = 0
+    def __init__(self, name: str, low: float, high: float, 
+                 scale: str = 'linear'):
+        """
+        Args:
+            name: 参数名
+            low: 最小值
+            high: 最大值
+            scale: 缩放方式 ('linear' 或 'log')
+        """
+        super().__init__(name)
+        self.low = low
+        self.high = high
+        self.scale = scale
         
-    def _generate_grid(self):
-        """生成网格点"""
-        grid_coords = []
-        
-        for name, param in self.space.parameters.items():
-            if isinstance(self.resolution, dict):
-                res = self.resolution.get(name, 10)
-            else:
-                res = self.resolution
-                
-            # 生成该维度的网格点
-            if hasattr(param, 'choices'):
-                # 分类参数使用所有选项
-                points = list(range(len(param.choices)))
-            else:
-                # 连续/离散参数均匀分布
-                points = np.linspace(0, 1, res)
-                
-            grid_coords.append(points)
-            
-        # 生成所有组合
-        import itertools
-        self._grid_points = list(itertools.product(*grid_coords))
-        
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """按网格顺序采样"""
-        if self._grid_points is None:
-            self._generate_grid()
-            
-        samples = []
-        for _ in range(n_samples):
-            if self._current_idx >= len(self._grid_points):
-                # 网格用完后随机采样
-                samples.append(self.space.sample(self.random_state))
-            else:
-                # 使用网格点
-                point = self._grid_points[self._current_idx]
-                vector = np.array(point)
-                config = self.space.denormalize(vector)
-                samples.append(config)
-                self._current_idx += 1
-                
-        return samples
-
-
-class LatinHypercubeSampler(Sampler):
-    """拉丁超立方采样器"""
+        if scale == 'log':
+            if low <= 0 or high <= 0:
+                raise ValueError("对数缩放需要正数范围")
+            self.log_low = np.log(low)
+            self.log_high = np.log(high)
     
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """LHS采样确保每个维度均匀覆盖"""
-        n_dims = len(self.space.parameters)
-        
-        # 生成LHS采样点
-        samples_normalized = self._lhs_sample(n_samples, n_dims)
-        
-        # 转换为配置
-        samples = []
-        for i in range(n_samples):
-            vector = samples_normalized[i]
-            config = self.space.denormalize(vector)
-            samples.append(config)
-            
-        return samples
-        
-    def _lhs_sample(self, n_samples: int, n_dims: int) -> np.ndarray:
-        """生成LHS采样点"""
-        # 每个维度分成n_samples个区间
-        samples = np.zeros((n_samples, n_dims))
-        
-        for dim in range(n_dims):
-            # 生成排列
-            perm = self.random_state.permutation(n_samples)
-            
-            # 在每个区间内随机采样
-            for i in range(n_samples):
-                low = perm[i] / n_samples
-                high = (perm[i] + 1) / n_samples
-                samples[i, dim] = self.random_state.uniform(low, high)
-                
-        return samples
-
-
-class SobolSampler(Sampler):
-    """Sobol序列采样器（准随机）"""
-    
-    def __init__(self, space: ParameterSpace, seed: Optional[int] = None):
-        super().__init__(space, seed)
-        if not HAS_SCIPY:
-            raise ImportError("SobolSampler需要scipy库")
-            
-        n_dims = len(self.space.parameters)
-        self.sobol = qmc.Sobol(d=n_dims, scramble=True, seed=seed)
-        
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """Sobol序列采样"""
-        # 生成Sobol点
-        samples_normalized = self.sobol.random(n_samples)
-        
-        # 转换为配置
-        samples = []
-        for i in range(n_samples):
-            vector = samples_normalized[i]
-            config = self.space.denormalize(vector)
-            samples.append(config)
-            
-        return samples
-
-
-class HaltonSampler(Sampler):
-    """Halton序列采样器"""
-    
-    def __init__(self, space: ParameterSpace, seed: Optional[int] = None):
-        super().__init__(space, seed)
-        if not HAS_SCIPY:
-            raise ImportError("HaltonSampler需要scipy库")
-            
-        n_dims = len(self.space.parameters)
-        self.halton = qmc.Halton(d=n_dims, scramble=True, seed=seed)
-        
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """Halton序列采样"""
-        # 生成Halton点
-        samples_normalized = self.halton.random(n_samples)
-        
-        # 转换为配置
-        samples = []
-        for i in range(n_samples):
-            vector = samples_normalized[i]
-            config = self.space.denormalize(vector)
-            samples.append(config)
-            
-        return samples
-
-
-class AdaptiveSampler(Sampler):
-    """自适应采样器"""
-    
-    def __init__(self, space: ParameterSpace, 
-                 base_sampler: Optional[Sampler] = None,
-                 exploration_weight: float = 0.5,
-                 seed: Optional[int] = None):
-        super().__init__(space, seed)
-        self.base_sampler = base_sampler or RandomSampler(space, seed)
-        self.exploration_weight = exploration_weight
-        self.best_configs: List[Tuple[Dict, float]] = []
-        self.kde_bandwidth = 0.1
-        
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """自适应采样，平衡探索和利用"""
-        if len(self.history) < 10:
-            # 初期使用基础采样器
-            return self.base_sampler.sample(n_samples)
-            
-        samples = []
-        for _ in range(n_samples):
-            if self.random_state.random() < self.exploration_weight:
-                # 探索：随机采样
-                config = self.space.sample(self.random_state)
-            else:
-                # 利用：在好的区域附近采样
-                config = self._exploit_sample()
-                
-            samples.append(config)
-            
-        return samples
-        
-    def _exploit_sample(self) -> Dict:
-        """在表现好的配置附近采样"""
-        # 选择一个好的历史配置
-        sorted_history = sorted(self.history, 
-                              key=lambda x: x['score'], 
-                              reverse=True)
-        
-        # 从top-k中随机选择
-        k = min(10, len(sorted_history))
-        selected = self.random_state.choice(sorted_history[:k])
-        base_config = selected['config']
-        
-        # 在附近添加噪声
-        base_vector = self.space.normalize(base_config)
-        noise = self.random_state.normal(0, self.kde_bandwidth, len(base_vector))
-        new_vector = np.clip(base_vector + noise, 0, 1)
-        
-        return self.space.denormalize(new_vector)
-        
-    def update(self, configs: List[Dict], scores: List[float]):
-        """更新采样器状态"""
-        super().update(configs, scores)
-        
-        # 更新最佳配置列表
-        for config, score in zip(configs, scores):
-            self.best_configs.append((config, score))
-            
-        # 保持最佳配置数量限制
-        self.best_configs = sorted(self.best_configs, 
-                                 key=lambda x: x[1], 
-                                 reverse=True)[:50]
-                                 
-        # 自适应调整带宽
-        if len(self.history) % 20 == 0:
-            self._update_bandwidth()
-            
-    def _update_bandwidth(self):
-        """根据搜索进展调整带宽"""
-        # 计算最近的改进率
-        recent_scores = [h['score'] for h in self.history[-20:]]
-        improvement = np.std(recent_scores)
-        
-        # 如果改进小，减小带宽以精细搜索
-        if improvement < 0.01:
-            self.kde_bandwidth *= 0.9
+    def sample(self, random_state: np.random.RandomState) -> float:
+        """采样一个值"""
+        if self.scale == 'log':
+            log_value = random_state.uniform(self.log_low, self.log_high)
+            return np.exp(log_value)
         else:
-            self.kde_bandwidth *= 1.1
-            
-        # 限制带宽范围
-        self.kde_bandwidth = np.clip(self.kde_bandwidth, 0.01, 0.5)
-
-
-class ThompsonSampler(Sampler):
-    """Thompson采样器（基于贝叶斯方法）"""
+            return random_state.uniform(self.low, self.high)
     
-    def __init__(self, space: ParameterSpace, 
-                 prior_mean: float = 0.0,
-                 prior_std: float = 1.0,
-                 seed: Optional[int] = None):
-        super().__init__(space, seed)
-        self.prior_mean = prior_mean
-        self.prior_std = prior_std
-        self.posterior_params = {}  # 存储每个区域的后验参数
+    def normalize(self, value: float) -> float:
+        """归一化到[0,1]"""
+        if self.scale == 'log':
+            log_value = np.log(max(value, 1e-10))  # 防止log(0)
+            return (log_value - self.log_low) / (self.log_high - self.log_low)
+        else:
+            return (value - self.low) / (self.high - self.low)
+    
+    def denormalize(self, normalized_value: float) -> float:
+        """反归一化"""
+        normalized_value = np.clip(normalized_value, 0, 1)
         
-    def sample(self, n_samples: int = 1) -> List[Dict]:
-        """Thompson采样"""
-        samples = []
+        if self.scale == 'log':
+            log_value = self.log_low + normalized_value * (self.log_high - self.log_low)
+            return np.exp(log_value)
+        else:
+            return self.low + normalized_value * (self.high - self.low)
+
+
+class DiscreteParameter(Parameter):
+    """离散参数"""
+    
+    def __init__(self, name: str, low: int, high: int, step: int = 1):
+        """
+        Args:
+            name: 参数名
+            low: 最小值
+            high: 最大值
+            step: 步长
+        """
+        super().__init__(name)
+        self.low = low
+        self.high = high
+        self.step = step
+        self.values = list(range(low, high + 1, step))
+    
+    def sample(self, random_state: np.random.RandomState) -> int:
+        """采样一个值"""
+        return random_state.choice(self.values)
+    
+    def normalize(self, value: int) -> float:
+        """归一化到[0,1]"""
+        try:
+            index = self.values.index(value)
+            return index / (len(self.values) - 1) if len(self.values) > 1 else 0
+        except ValueError:
+            # 如果值不在列表中，找最近的
+            closest_idx = np.argmin([abs(v - value) for v in self.values])
+            return closest_idx / (len(self.values) - 1) if len(self.values) > 1 else 0
+    
+    def denormalize(self, normalized_value: float) -> int:
+        """反归一化"""
+        normalized_value = np.clip(normalized_value, 0, 1)
+        index = int(round(normalized_value * (len(self.values) - 1)))
+        return self.values[index]
+
+
+class CategoricalParameter(Parameter):
+    """分类参数"""
+    
+    def __init__(self, name: str, choices: List[Any]):
+        """
+        Args:
+            name: 参数名
+            choices: 选项列表
+        """
+        super().__init__(name)
+        self.choices = choices
+    
+    def sample(self, random_state: np.random.RandomState) -> Any:
+        """采样一个值"""
+        return random_state.choice(self.choices)
+    
+    def normalize(self, value: Any) -> float:
+        """归一化到[0,1]"""
+        try:
+            index = self.choices.index(value)
+            return index / (len(self.choices) - 1) if len(self.choices) > 1 else 0
+        except ValueError:
+            return 0  # 如果值不在选项中，返回0
+    
+    def denormalize(self, normalized_value: float) -> Any:
+        """反归一化"""
+        normalized_value = np.clip(normalized_value, 0, 1)
+        index = int(round(normalized_value * (len(self.choices) - 1)))
+        return self.choices[index]
+
+
+class ConditionalParameter(Parameter):
+    """条件参数"""
+    
+    def __init__(self, name: str, base_param: Parameter, 
+                 condition: Callable[[Dict], bool]):
+        """
+        Args:
+            name: 参数名
+            base_param: 基础参数
+            condition: 激活条件函数
+        """
+        super().__init__(name)
+        self.base_param = base_param
+        self.condition = condition
+    
+    def is_active(self, config: Dict) -> bool:
+        """检查参数是否激活"""
+        return self.condition(config)
+    
+    def sample(self, random_state: np.random.RandomState) -> Any:
+        """采样一个值"""
+        return self.base_param.sample(random_state)
+    
+    def normalize(self, value: Any) -> float:
+        """归一化到[0,1]"""
+        return self.base_param.normalize(value)
+    
+    def denormalize(self, normalized_value: float) -> Any:
+        """反归一化"""
+        return self.base_param.denormalize(normalized_value)
+
+
+class ParameterSpace:
+    """参数空间"""
+    
+    def __init__(self):
+        self.parameters: Dict[str, Parameter] = {}
+        self.param_order: List[str] = []
+    
+    def add_continuous(self, name: str, low: float, high: float, 
+                      scale: str = 'linear'):
+        """添加连续参数"""
+        param = ContinuousParameter(name, low, high, scale)
+        self.parameters[name] = param
+        self.param_order.append(name)
+    
+    def add_discrete(self, name: str, low: int, high: int, step: int = 1):
+        """添加离散参数"""
+        param = DiscreteParameter(name, low, high, step)
+        self.parameters[name] = param
+        self.param_order.append(name)
+    
+    def add_categorical(self, name: str, choices: List[Any]):
+        """添加分类参数"""
+        param = CategoricalParameter(name, choices)
+        self.parameters[name] = param
+        self.param_order.append(name)
+    
+    def add_conditional(self, name: str, base_param: Parameter,
+                       condition: Callable[[Dict], bool]):
+        """添加条件参数"""
+        param = ConditionalParameter(name, base_param, condition)
+        self.parameters[name] = param
+        self.param_order.append(name)
+    
+    def sample(self, random_state: np.random.RandomState) -> Dict:
+        """采样一个配置"""
+        config = {}
         
-        for _ in range(n_samples):
-            # 为每个参数采样一个值
-            config = {}
-            for name, param in self.space.parameters.items():
-                # 获取该参数的后验分布
-                if name in self.posterior_params:
-                    mean, std = self.posterior_params[name]
-                else:
-                    mean, std = self.prior_mean, self.prior_std
-                    
-                # 从后验分布采样
-                sampled_score = self.random_state.normal(mean, std)
-                
-                # 根据采样的分数选择参数值
-                # 这里简化为随机选择，实际可以更复杂
-                config[name] = param.sample(self.random_state)
-                
-            samples.append(config)
+        for name in self.param_order:
+            param = self.parameters[name]
             
-        return samples
+            # 检查条件参数
+            if isinstance(param, ConditionalParameter):
+                if param.is_active(config):
+                    config[name] = param.sample(random_state)
+            else:
+                config[name] = param.sample(random_state)
         
-    def update(self, configs: List[Dict], scores: List[float]):
-        """更新后验分布"""
-        super().update(configs, scores)
+        return config
+    
+    def normalize(self, config: Dict) -> np.ndarray:
+        """将配置归一化为向量"""
+        vector = []
         
-        # 简化的后验更新（实际应该使用贝叶斯更新）
-        for config, score in zip(configs, scores):
-            for name, value in config.items():
-                if name not in self.posterior_params:
-                    self.posterior_params[name] = [score, self.prior_std]
+        for name in self.param_order:
+            if name in config:
+                param = self.parameters[name]
+                normalized_value = param.normalize(config[name])
+                vector.append(normalized_value)
+            else:
+                # 条件参数可能不存在
+                vector.append(0.0)
+        
+        return np.array(vector)
+    
+    def denormalize(self, vector: np.ndarray) -> Dict:
+        """将归一化向量转换为配置"""
+        config = {}
+        
+        for i, name in enumerate(self.param_order):
+            if i < len(vector):
+                param = self.parameters[name]
+                
+                # 检查条件参数
+                if isinstance(param, ConditionalParameter):
+                    if param.is_active(config):
+                        config[name] = param.denormalize(vector[i])
                 else:
-                    # 简单的移动平均更新
-                    old_mean, old_std = self.posterior_params[name]
-                    new_mean = 0.9 * old_mean + 0.1 * score
-                    new_std = 0.95 * old_std  # 逐渐减小不确定性
-                    self.posterior_params[name] = [new_mean, new_std]
+                    config[name] = param.denormalize(vector[i])
+        
+        return config
+    
+    def get_bounds(self) -> List[tuple]:
+        """获取参数边界（用于优化算法）"""
+        bounds = []
+        
+        for name in self.param_order:
+            param = self.parameters[name]
+            if isinstance(param, (ContinuousParameter, DiscreteParameter)):
+                bounds.append((0.0, 1.0))  # 归一化后的边界
+            elif isinstance(param, CategoricalParameter):
+                bounds.append((0.0, 1.0))
+            else:
+                bounds.append((0.0, 1.0))
+        
+        return bounds
+    
+    def get_dimension(self) -> int:
+        """获取参数空间维度"""
+        return len(self.param_order)
+    
+    def validate_config(self, config: Dict) -> bool:
+        """验证配置是否有效"""
+        for name, value in config.items():
+            if name in self.parameters:
+                param = self.parameters[name]
+                
+                # 检查类型和范围
+                if isinstance(param, ContinuousParameter):
+                    if not isinstance(value, (int, float)):
+                        return False
+                    if not (param.low <= value <= param.high):
+                        return False
+                
+                elif isinstance(param, DiscreteParameter):
+                    if not isinstance(value, int):
+                        return False
+                    if value not in param.values:
+                        return False
+                
+                elif isinstance(param, CategoricalParameter):
+                    if value not in param.choices:
+                        return False
+        
+        return True
+    
+    def get_parameter_info(self) -> Dict:
+        """获取参数信息"""
+        info = {}
+        
+        for name, param in self.parameters.items():
+            if isinstance(param, ContinuousParameter):
+                info[name] = {
+                    'type': 'continuous',
+                    'low': param.low,
+                    'high': param.high,
+                    'scale': param.scale
+                }
+            elif isinstance(param, DiscreteParameter):
+                info[name] = {
+                    'type': 'discrete',
+                    'low': param.low,
+                    'high': param.high,
+                    'step': param.step,
+                    'values': param.values
+                }
+            elif isinstance(param, CategoricalParameter):
+                info[name] = {
+                    'type': 'categorical',
+                    'choices': param.choices
+                }
+            elif isinstance(param, ConditionalParameter):
+                base_info = {}
+                if isinstance(param.base_param, ContinuousParameter):
+                    base_info = {
+                        'type': 'continuous',
+                        'low': param.base_param.low,
+                        'high': param.base_param.high,
+                        'scale': param.base_param.scale
+                    }
+                # 可以添加其他基础参数类型的处理
+                
+                info[name] = {
+                    'type': 'conditional',
+                    'base_param': base_info
+                }
+        
+        return info

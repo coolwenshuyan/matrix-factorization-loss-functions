@@ -82,12 +82,13 @@ class L2Regularizer(BaseRegularizer):
     
     def _get_lambda(self, parameter_name: str) -> float:
         """获取特定参数的正则化强度"""
-        if 'user' in parameter_name.lower() or parameter_name == 'P':
+        # 优先检查bias，因为user_bias和item_bias都包含bias
+        if 'bias' in parameter_name.lower():
+            return self.lambda_bias
+        elif 'user' in parameter_name.lower() or parameter_name == 'P':
             return self.lambda_user
         elif 'item' in parameter_name.lower() or parameter_name == 'Q':
             return self.lambda_item
-        elif 'bias' in parameter_name.lower():
-            return self.lambda_bias
         else:
             return self.lambda_reg
 

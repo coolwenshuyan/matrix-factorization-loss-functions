@@ -103,35 +103,35 @@ class HybridPiecewiseLoss(BaseLoss):
     def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算HPL损失的梯度"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
         abs_errors = np.abs(errors)
         sign_errors = np.sign(errors)
-        
+
         # 初始化梯度数组
         grad = np.zeros_like(errors, dtype=np.float64)
-        
+
         # 第一段梯度：e
         mask1 = abs_errors < self.delta1
         if np.any(mask1):
             grad[mask1] = errors[mask1]
-        
+
         # 第二段梯度：δ₁ * sign(e)
         mask2 = (abs_errors >= self.delta1) & (abs_errors < self.delta2)
         if np.any(mask2):
             grad[mask2] = self.delta1 * sign_errors[mask2]
-        
+
         # 第三段梯度：C_sigmoid * δ₁ * exp(-B'(|e| - δ₂)) * sign(e)
         mask3 = abs_errors >= self.delta2
         if np.any(mask3):
             # 防止指数溢出
             exp_arg = -self.b_prime * (abs_errors[mask3] - self.delta2)
             exp_arg = np.clip(exp_arg, -50, 50)
-            
+
             exp_term = np.exp(exp_arg)
             grad[mask3] = self.c_sigmoid * self.delta1 * exp_term * sign_errors[mask3]
-        
-        return grad
+
+        return grad / len(errors)  # 除以样本数量
     
     def verify_continuity(self, num_points: int = 1000) -> Dict[str, bool]:
         """
@@ -196,36 +196,44 @@ class HPLVariants:
                 self._config = {'delta1': delta1}
             
             def forward(self, predictions: np.ndarray, targets: np.ndarray) -> float:
+                self.validate_inputs(predictions, targets)
+                
                 errors = predictions - targets
                 abs_errors = np.abs(errors)
                 
-                loss = np.zeros_like(errors)
+                loss = np.zeros_like(errors, dtype=np.float64)
                 
                 # 二次段
                 mask1 = abs_errors < self.delta1
-                loss[mask1] = 0.5 * errors[mask1] ** 2
+                if np.any(mask1):
+                    loss[mask1] = 0.5 * errors[mask1] ** 2
                 
                 # 线性段（延伸到无穷）
                 mask2 = abs_errors >= self.delta1
-                loss[mask2] = self.delta1 * abs_errors[mask2] - 0.5 * self.delta1 ** 2
+                if np.any(mask2):
+                    loss[mask2] = self.delta1 * abs_errors[mask2] - 0.5 * self.delta1 ** 2
                 
                 return float(np.mean(loss))
             
             def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
+                self.validate_inputs(predictions, targets)
+                
                 errors = predictions - targets
                 abs_errors = np.abs(errors)
                 
-                grad = np.zeros_like(errors)
+                grad = np.zeros_like(errors, dtype=np.float64)
                 
                 # 二次段梯度
                 mask1 = abs_errors < self.delta1
-                grad[mask1] = errors[mask1]
+                if np.any(mask1):
+                    grad[mask1] = errors[mask1]
                 
                 # 线性段梯度
                 mask2 = abs_errors >= self.delta1
-                grad[mask2] = self.delta1 * np.sign(errors[mask2])
+                if np.any(mask2):
+                    grad[mask2] = self.delta1 * np.sign(errors[mask2])
                 
-                return grad
+                return grad / len(errors)
         
         return NoSaturationLoss()
     
@@ -242,6 +250,11 @@ class HPLVariants:
                 self.l_max = l_max
                 self.c_sigmoid = c_sigmoid
                 self.l_quad_delta1 = 0.5 * delta1 ** 2
+                
+                # 添加参数验证
+                if l_max <= self.l_quad_delta1:
+                    raise ValueError(f"l_max ({l_max}) 必须大于 L_quad(δ₁) ({self.l_quad_delta1})")
+                
                 self.b_prime = c_sigmoid * delta1 / (l_max - self.l_quad_delta1)
                 self._config = {
                     'delta1': delta1,
@@ -250,14 +263,17 @@ class HPLVariants:
                 }
             
             def forward(self, predictions: np.ndarray, targets: np.ndarray) -> float:
+                self.validate_inputs(predictions, targets)
+                
                 errors = predictions - targets
                 abs_errors = np.abs(errors)
                 
-                loss = np.zeros_like(errors)
+                loss = np.zeros_like(errors, dtype=np.float64)
                 
                 # 二次段
                 mask1 = abs_errors < self.delta1
-                loss[mask1] = 0.5 * errors[mask1] ** 2
+                if np.any(mask1):
+                    loss[mask1] = 0.5 * errors[mask1] ** 2
                 
                 # 饱和段（直接从二次段过渡）
                 mask2 = abs_errors >= self.delta1
@@ -270,14 +286,17 @@ class HPLVariants:
                 return float(np.mean(loss))
             
             def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
+                self.validate_inputs(predictions, targets)
+                
                 errors = predictions - targets
                 abs_errors = np.abs(errors)
                 
-                grad = np.zeros_like(errors)
+                grad = np.zeros_like(errors, dtype=np.float64)
                 
                 # 二次段梯度
                 mask1 = abs_errors < self.delta1
-                grad[mask1] = errors[mask1]
+                if np.any(mask1):
+                    grad[mask1] = errors[mask1]
                 
                 # 饱和段梯度
                 mask2 = abs_errors >= self.delta1
@@ -287,6 +306,6 @@ class HPLVariants:
                     exp_term = np.exp(exp_arg)
                     grad[mask2] = self.c_sigmoid * self.delta1 * exp_term * np.sign(errors[mask2])
                 
-                return grad
+                return grad / len(errors)
         
         return NoLinearLoss()

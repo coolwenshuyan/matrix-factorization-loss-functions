@@ -170,7 +170,7 @@ class BaseMatrixFactorization(ABC):
                 'n_factors': self.n_factors,
                 'use_bias': self.use_bias,
                 'global_mean': self.global_mean,
-                'dtype': str(self.dtype)
+                'dtype': np.dtype(self.dtype).name  # 确保是dtype实例
             },
             'parameters': self.get_parameters(),
             'train_history': self.train_history
@@ -183,7 +183,7 @@ class BaseMatrixFactorization(ABC):
         config_path = filepath.replace('.npz', '_config.json')
         with open(config_path, 'w') as f:
             config_copy = save_dict['config'].copy()
-            config_copy['dtype'] = str(config_copy['dtype'])
+            # dtype已经是字符串了，不需要再转换
             json.dump(config_copy, f, indent=2)
     
     def load_model(self, filepath: str):

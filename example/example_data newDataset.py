@@ -6,9 +6,9 @@ import sys
 # 添加data模块路径（根据你的文件结构调整）
 sys.path.append('data')
 
-from loader import DatasetLoader
-from dataset import MovieLens100K
-from data_manager import DataManager
+from data.loader import DatasetLoader
+from data.dataset import MovieLens100K
+from data.data_manager import DataManager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)

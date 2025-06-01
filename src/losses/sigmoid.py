@@ -6,9 +6,9 @@ from .base import BaseLoss
 class SigmoidLikeLoss(BaseLoss):
     """
     类Sigmoid损失函数
-    
-    L(e) = L_max * (1 - exp(-α * e²))
-    ∂L/∂e = 2 * α * L_max * e * exp(-α * e²)
+
+    L(e) = L_max * (2 / (1 + exp(-α * e²)) - 1)
+    ∂L/∂e = 2 * α * L_max * e * exp(-α * e²) / (1 + exp(-α * e²))²
     """
     
     def __init__(self, alpha: float = 1.0, l_max: float = 3.0):
@@ -36,33 +36,36 @@ class SigmoidLikeLoss(BaseLoss):
     def forward(self, predictions: np.ndarray, targets: np.ndarray) -> float:
         """计算Sigmoid-like损失"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
         errors_squared = errors ** 2
-        
+
         # 防止指数溢出
         exp_arg = -self.alpha * errors_squared
-        exp_arg = np.clip(exp_arg, -50, 0)  # exp(-50) ≈ 0
-        
-        loss = self.l_max * (1 - np.exp(exp_arg))
-        
+        exp_arg = np.clip(exp_arg, -50, 50)
+
+        # L(e) = L_max * (2 / (1 + exp(-α * e²)) - 1)
+        loss = self.l_max * (2 / (1 + np.exp(exp_arg)) - 1)
+
         return float(np.mean(loss))
     
     def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算Sigmoid-like损失的梯度"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
         errors_squared = errors ** 2
-        
+
         # 防止指数溢出
         exp_arg = -self.alpha * errors_squared
-        exp_arg = np.clip(exp_arg, -50, 0)
-        
+        exp_arg = np.clip(exp_arg, -50, 50)
+
         exp_term = np.exp(exp_arg)
-        grad = 2 * self.alpha * self.l_max * errors * exp_term
-        
-        return grad
+        # ∂L/∂e = 4 * α * L_max * e * exp(-α * e²) / (1 + exp(-α * e²))²
+        denominator = (1 + exp_term) ** 2
+        grad = 4 * self.alpha * self.l_max * errors * exp_term / denominator
+
+        return grad / len(errors)  # 除以样本数量
     
     def hessian(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算Sigmoid-like损失的二阶导数"""

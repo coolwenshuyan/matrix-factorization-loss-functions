@@ -16,7 +16,7 @@ from .space import (
     CategoricalParameter,
     ConditionalParameter
 )
-from .sampler import (
+from .samplers import (
     RandomSampler,
     LatinHypercubeSampler,
     SobolSampler,

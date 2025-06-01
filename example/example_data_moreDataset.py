@@ -9,9 +9,9 @@ sys.path.append('data')
 
 import logging
 from pathlib import Path
-from loader import DatasetLoader
-from dataset import MovieLens100K
-from data_manager import DataManager
+from data.loader import DatasetLoader
+from data.dataset import MovieLens100K
+from data.data_manager import DataManager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)

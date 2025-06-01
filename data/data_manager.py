@@ -5,10 +5,10 @@ import logging
 import json
 from pathlib import Path
 
-from dataset import BaseDataset
-from loader import DatasetLoader
-from preprocessor import DataPreprocessor
-from iterator import BatchIterator, NegativeSamplingIterator
+from .dataset import BaseDataset
+from .loader import DatasetLoader
+from .preprocessor import DataPreprocessor
+from .iterator import BatchIterator, NegativeSamplingIterator
 
 logger = logging.getLogger(__name__)
 

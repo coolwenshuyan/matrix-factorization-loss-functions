@@ -53,22 +53,22 @@ class HuberLoss(BaseLoss):
     def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算Huber损失的梯度"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
         abs_errors = np.abs(errors)
-        
+
         # 分段计算梯度
         grad = np.zeros_like(errors)
-        
+
         # 二次部分的梯度
         quadratic_mask = abs_errors <= self.delta
         grad[quadratic_mask] = errors[quadratic_mask]
-        
+
         # 线性部分的梯度
         linear_mask = ~quadratic_mask
         grad[linear_mask] = self.delta * np.sign(errors[linear_mask])
-        
-        return grad
+
+        return grad / len(errors)  # 除以样本数量
     
     def hessian(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算Huber损失的二阶导数"""
@@ -133,26 +133,26 @@ class LogcoshLoss(BaseLoss):
     def gradient(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算Logcosh损失的梯度"""
         self.validate_inputs(predictions, targets)
-        
+
         errors = predictions - targets
-        
+
         # 梯度是tanh(e)
         # 对于大的|e|，tanh(e) ≈ sign(e)
         threshold = 20.0
-        
+
         grad = np.zeros_like(errors)
-        
+
         # 小值：使用精确公式
         small_mask = np.abs(errors) < threshold
         if np.any(small_mask):
             grad[small_mask] = np.tanh(errors[small_mask])
-        
+
         # 大值：使用近似
         large_mask = ~small_mask
         if np.any(large_mask):
             grad[large_mask] = np.sign(errors[large_mask])
-        
-        return grad
+
+        return grad / len(errors)  # 除以样本数量
     
     def hessian(self, predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """计算Logcosh损失的二阶导数"""

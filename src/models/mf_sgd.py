@@ -4,9 +4,9 @@ from typing import Optional, Dict, Any, Callable, Tuple
 import logging
 from tqdm import tqdm
 
-from base_mf import BaseMatrixFactorization
-from initializers import NormalInitializer
-from regularizers import L2Regularizer
+from .base_mf import BaseMatrixFactorization
+from .initializers import NormalInitializer
+from .regularizers import L2Regularizer
 
 logger = logging.getLogger(__name__)
 

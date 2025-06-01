@@ -10,9 +10,23 @@ import time
 import pickle
 import sqlite3
 import pandas as pd
+import numpy as np
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import hashlib
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """自定义JSON编码器，处理numpy类型"""
+
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 
 class ExperimentTracker:
@@ -119,12 +133,12 @@ class ExperimentTracker:
         }
         
         with open(trial_path, 'w') as f:
-            json.dump(trial_data, f, indent=2)
-            
+            json.dump(trial_data, f, indent=2, cls=NumpyEncoder)
+
         # 追加到汇总文件
         summary_path = os.path.join(self.experiment_dir, "trials_summary.jsonl")
         with open(summary_path, 'a') as f:
-            f.write(json.dumps(trial_data) + '\n')
+            f.write(json.dumps(trial_data, cls=NumpyEncoder) + '\n')
             
     def _log_trial_sqlite(self, trial: 'Trial'):
         """记录到SQLite"""
@@ -135,9 +149,9 @@ class ExperimentTracker:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trial.trial_id,
-            json.dumps(trial.config),
+            json.dumps(trial.config, cls=NumpyEncoder),
             trial.score,
-            json.dumps(trial.metrics) if trial.metrics else None,
+            json.dumps(trial.metrics, cls=NumpyEncoder) if trial.metrics else None,
             trial.start_time,
             trial.end_time,
             trial.duration,
@@ -304,13 +318,13 @@ class ExperimentTracker:
             metadata[key] = value
             
             with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(metadata, f, indent=2, cls=NumpyEncoder)
                 
         elif self.backend == "sqlite":
             self.conn.execute("""
                 INSERT OR REPLACE INTO metadata (key, value)
                 VALUES (?, ?)
-            """, (key, json.dumps(value)))
+            """, (key, json.dumps(value, cls=NumpyEncoder)))
             self.conn.commit()
             
         elif self.backend == "memory":
@@ -346,7 +360,7 @@ class ExperimentTracker:
         # 保存结果摘要
         summary_path = os.path.join(self.experiment_dir, "final_results.json")
         with open(summary_path, 'w') as f:
-            json.dump(results, f, indent=2)
+            json.dump(results, f, indent=2, cls=NumpyEncoder)
             
         # 保存为CSV便于分析
         if results['all_trials']:

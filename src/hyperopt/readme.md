@@ -4,17 +4,16 @@
 
 创建以下文件结构：
 
-```
-src/
-├── hyperopt/
-│   ├── __init__.py
-│   ├── space.py              # 超参数空间定义
-│   ├── sampler.py            # 采样策略实现
-│   ├── optimizer.py          # 优化器主类
-│   ├── constraints.py        # 约束条件管理
-│   ├── parallel.py           # 并行执行管理
-│   ├── tracker.py            # 实验追踪器
-│   └── utils.py             # 工具函数
+src/hyperopt/
+├── space.py              ← 参数空间定义 
+├── samplers.py           ← 采样器实现   
+├── optimizer.py          ← 优化器主类
+├── constraints.py        ← 约束管理
+├── parallel.py           ← 并行执行
+├── tracker.py            ← 实验追踪
+├── utils.py              ← 工具函数
+├── example.py            ← 示例代码
+└── __init__.py           ← 模块入口
 ```
 
 ### 2. **超参数空间定义（space.py）**

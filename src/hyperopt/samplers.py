@@ -5,8 +5,9 @@
 """
 
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from abc import ABC, abstractmethod
+# 修改这一行，从space_impl导入ParameterSpace
 from .space import ParameterSpace
 import warnings
 
