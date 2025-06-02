@@ -1,463 +1,254 @@
 """
-收敛曲线图表模块
+绘图配置模块
 
-生成训练过程相关的可视化
+提供统一的绘图样式和配置
 """
 
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import seaborn as sns
+import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
-from scipy.signal import savgol_filter
+import os
 
-from .plot_config import (
-    PlotConfig,
-    apply_axis_style,
-    get_color_palette,
-    get_marker_styles,
-    create_figure_with_subplots,
-    add_subplot_labels
-)
+class PlotConfig:
+    """绘图配置类"""
+
+    # 默认图形大小
+    FIGURE_SIZES = {
+        'small': (4, 3),
+        'medium': (6, 4),
+        'large': (8, 6),
+        'double': (10, 6),
+        'wide': (12, 6),
+        'poster': (16, 9)
+    }
+
+    # 默认颜色方案
+    COLOR_PALETTES = {
+        'academic': ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                    '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'],
+        'pastel': sns.color_palette("pastel"),
+        'muted': sns.color_palette("muted"),
+        'bright': sns.color_palette("bright"),
+        'dark': sns.color_palette("dark"),
+        'colorblind': sns.color_palette("colorblind")
+    }
+
+    # 默认标记样式
+    MARKER_STYLES = [
+        {'marker': 'o', 'markersize': 8, 'linewidth': 2, 'color': '#1f77b4'},
+        {'marker': 's', 'markersize': 8, 'linewidth': 2, 'color': '#ff7f0e'},
+        {'marker': '^', 'markersize': 8, 'linewidth': 2, 'color': '#2ca02c'},
+        {'marker': 'D', 'markersize': 8, 'linewidth': 2, 'color': '#d62728'},
+        {'marker': 'v', 'markersize': 8, 'linewidth': 2, 'color': '#9467bd'},
+        {'marker': 'p', 'markersize': 8, 'linewidth': 2, 'color': '#8c564b'},
+        {'marker': '*', 'markersize': 10, 'linewidth': 2, 'color': '#e377c2'},
+        {'marker': 'h', 'markersize': 8, 'linewidth': 2, 'color': '#7f7f7f'},
+        {'marker': 'X', 'markersize': 8, 'linewidth': 2, 'color': '#bcbd22'},
+        {'marker': 'P', 'markersize': 8, 'linewidth': 2, 'color': '#17becf'}
+    ]
+
+    @staticmethod
+    def get_figure_size(size: str = 'medium', aspect_ratio: float = None) -> Tuple[float, float]:
+        """获取图形大小
+
+        Args:
+            size: 预定义大小名称
+            aspect_ratio: 宽高比
+
+        Returns:
+            (宽, 高)元组
+        """
+        if size in PlotConfig.FIGURE_SIZES:
+            width, height = PlotConfig.FIGURE_SIZES[size]
+        else:
+            width, height = PlotConfig.FIGURE_SIZES['medium']
+
+        if aspect_ratio is not None:
+            height = width / aspect_ratio
+
+        return (width, height)
+
+    @staticmethod
+    def get_subplot_size(n_rows: int, n_cols: int, size: str = 'medium') -> Tuple[float, float]:
+        """获取子图大小
+
+        Args:
+            n_rows: 行数
+            n_cols: 列数
+            size: 预定义大小名称
+
+        Returns:
+            (宽, 高)元组
+        """
+        base_width, base_height = PlotConfig.get_figure_size(size)
+        return (base_width * n_cols, base_height * n_rows)
 
 
-class ConvergencePlotter:
-    """收敛图表绘制器"""
-    
-    def __init__(self, style: str = 'academic'):
-        self.style = style
-        self.colors = get_color_palette('academic')
-        self.markers = get_marker_styles(10)
-        
-    def plot_loss_curves(self,
-                        histories: Dict[str, Dict[str, List[float]]],
-                        metrics: List[str] = ['train_loss', 'val_loss'],
-                        figsize: Optional[Tuple] = None,
-                        smooth: bool = True,
-                        smooth_window: int = 5,
-                        mark_best: bool = True) -> plt.Figure:
-        """绘制损失曲线
-        
-        Args:
-            histories: 方法名到训练历史的字典
-            metrics: 要绘制的指标
-            figsize: 图形大小
-            smooth: 是否平滑曲线
-            smooth_window: 平滑窗口大小
-            mark_best: 是否标记最佳点
-        """
-        n_metrics = len(metrics)
-        
-        if figsize is None:
-            figsize = PlotConfig.get_subplot_size(n_metrics, n_metrics)
-            
-        fig, axes = create_figure_with_subplots(n_metrics, n_metrics)
-        if n_metrics == 1:
-            axes = [axes]
-            
-        for ax, metric in zip(axes, metrics):
-            for i, (method, history) in enumerate(histories.items()):
-                if metric in history:
-                    values = history[metric]
-                    epochs = np.arange(1, len(values) + 1)
-                    
-                    # 原始曲线
-                    ax.plot(epochs, values, 
-                           alpha=0.3, color=self.colors[i])
-                    
-                    # 平滑曲线
-                    if smooth and len(values) > smooth_window:
-                        smoothed = savgol_filter(values, smooth_window, 3)
-                        ax.plot(epochs, smoothed, 
-                               label=method, color=self.colors[i],
-                               linewidth=2)
-                    else:
-                        ax.plot(epochs, values,
-                               label=method, color=self.colors[i],
-                               linewidth=2)
-                        
-                    # 标记最佳点
-                    if mark_best:
-                        if 'loss' in metric.lower():
-                            best_idx = np.argmin(values)
-                        else:
-                            best_idx = np.argmax(values)
-                            
-                        ax.plot(epochs[best_idx], values[best_idx], 
-                               'o', color=self.colors[i], markersize=8,
-                               markeredgecolor='white', markeredgewidth=2)
-                        
-                        # 添加文本标注
-                        ax.annotate(f'{values[best_idx]:.4f}',
-                                   xy=(epochs[best_idx], values[best_idx]),
-                                   xytext=(5, 5), textcoords='offset points',
-                                   fontsize=8, ha='left')
-                                   
-            apply_axis_style(ax,
-                           xlabel='Epoch',
-                           ylabel=metric.replace('_', ' ').title(),
-                           title=f'{metric.replace("_", " ").title()} During Training',
-                           legend=True)
-                           
-        # 添加子图标签
-        add_subplot_labels(axes)
-        
-        plt.tight_layout()
-        return fig
-        
-    def plot_metric_comparison(self,
-                             histories: Dict[str, Dict[str, List[float]]],
-                             train_metric: str = 'train_loss',
-                             val_metric: str = 'val_loss',
-                             figsize: Optional[Tuple] = None) -> plt.Figure:
-        """绘制训练/验证指标对比
-        
-        Args:
-            histories: 训练历史
-            train_metric: 训练指标名
-            val_metric: 验证指标名
-            figsize: 图形大小
-        """
-        n_methods = len(histories)
-        
-        if figsize is None:
-            figsize = PlotConfig.get_subplot_size(n_methods, min(n_methods, 3))
-            
-        fig, axes = create_figure_with_subplots(n_methods, min(n_methods, 3))
-        
-        for ax, (method, history) in zip(axes, histories.items()):
-            if train_metric in history and val_metric in history:
-                train_values = history[train_metric]
-                val_values = history[val_metric]
-                epochs = np.arange(1, len(train_values) + 1)
-                
-                # 绘制训练和验证曲线
-                ax.plot(epochs, train_values, 
-                       label='Training', color='blue', linewidth=2)
-                ax.plot(epochs, val_values, 
-                       label='Validation', color='red', linewidth=2)
-                
-                # 填充区域表示过拟合
-                ax.fill_between(epochs, train_values, val_values,
-                               where=(np.array(val_values) > np.array(train_values)),
-                               alpha=0.3, color='red', label='Overfitting')
-                
-                # 标记早停点
-                if len(val_values) < len(train_values):
-                    early_stop_epoch = len(val_values)
-                    ax.axvline(x=early_stop_epoch, color='green', 
-                              linestyle='--', alpha=0.7, label='Early Stop')
-                              
-            apply_axis_style(ax,
-                           xlabel='Epoch',
-                           ylabel='Loss',
-                           title=f'{method}',
-                           legend=True)
-                           
-        plt.tight_layout()
-        return fig
-        
-    def plot_learning_rate_schedule(self,
-                                  lr_schedules: Dict[str, List[float]],
-                                  figsize: Optional[Tuple] = None,
-                                  log_scale: bool = True) -> plt.Figure:
-        """绘制学习率调度曲线
-        
-        Args:
-            lr_schedules: 方法名到学习率列表的字典
-            figsize: 图形大小
-            log_scale: 是否使用对数尺度
-        """
-        if figsize is None:
-            figsize = PlotConfig.get_figure_size('double', aspect_ratio=0.5)
-            
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        for i, (method, lr_values) in enumerate(lr_schedules.items()):
-            epochs = np.arange(1, len(lr_values) + 1)
-            
-            ax.plot(epochs, lr_values, 
-                   label=method, color=self.colors[i],
-                   linewidth=2, marker='o', markersize=4,
-                   markevery=max(1, len(epochs)//20))
-                   
-            # 标记关键点（学习率变化点）
-            changes = []
-            for j in range(1, len(lr_values)):
-                if lr_values[j] != lr_values[j-1]:
-                    changes.append(j)
-                    
-            for change_epoch in changes:
-                ax.axvline(x=change_epoch, color=self.colors[i], 
-                          linestyle=':', alpha=0.5)
-                          
-        if log_scale:
-            ax.set_yscale('log')
-            
-        apply_axis_style(ax,
-                        xlabel='Epoch',
-                        ylabel='Learning Rate',
-                        title='Learning Rate Schedule',
-                        legend=True)
-        
+def set_plot_style(style: str = 'academic', use_latex: bool = False):
+    """设置全局绘图样式
+
+    Args:
+        style: 样式名称
+        use_latex: 是否使用LaTeX渲染
+    """
+    if style == 'academic':
+        plt.style.use('seaborn-v0_8-whitegrid')
+        sns.set_context("paper", font_scale=1.5)
+    elif style == 'presentation':
+        plt.style.use('seaborn-v0_8-talk')
+        sns.set_context("talk", font_scale=1.2)
+    elif style == 'poster':
+        plt.style.use('seaborn-v0_8-poster')
+        sns.set_context("poster", font_scale=1.0)
+    else:
+        plt.style.use('seaborn-v0_8-whitegrid')
+
+    if use_latex:
+        # 设置LaTeX渲染
+        plt.rcParams.update({
+            "text.usetex": True,
+            "font.family": "serif",
+            "font.serif": ["Computer Modern Roman"],
+        })
+
+
+def apply_axis_style(ax,
+                    xlabel: Optional[str] = None,
+                    ylabel: Optional[str] = None,
+                    title: Optional[str] = None,
+                    legend: bool = False,
+                    grid: bool = False,
+                    tight_layout: bool = True):
+    """应用坐标轴样式
+
+    Args:
+        ax: 坐标轴对象
+        xlabel: x轴标签
+        ylabel: y轴标签
+        title: 标题
+        legend: 是否显示图例
+        grid: 是否显示网格
+        tight_layout: 是否应用紧凑布局
+    """
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if ylabel:
+        ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+    if legend:
+        ax.legend(frameon=True, fancybox=True, framealpha=0.8,
+                 loc='best', fontsize='small')
+    if grid:
         ax.grid(True, alpha=0.3)
-        
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    if tight_layout:
         plt.tight_layout()
-        return fig
-        
-    def plot_gradient_statistics(self,
-                               grad_stats: Dict[str, Dict[str, List[float]]],
-                               figsize: Optional[Tuple] = None) -> plt.Figure:
-        """绘制梯度统计信息
-        
-        Args:
-            grad_stats: 梯度统计数据
-            figsize: 图形大小
-        """
-        if figsize is None:
-            figsize = PlotConfig.get_figure_size('double', aspect_ratio=1.2)
-            
-        fig, axes = plt.subplots(3, 1, figsize=figsize, sharex=True)
-        
-        # 梯度范数
-        ax = axes[0]
-        for i, (method, stats) in enumerate(grad_stats.items()):
-            if 'grad_norm' in stats:
-                epochs = np.arange(1, len(stats['grad_norm']) + 1)
-                ax.plot(epochs, stats['grad_norm'],
-                       label=method, color=self.colors[i], linewidth=2)
-                       
-        ax.set_yscale('log')
-        apply_axis_style(ax,
-                        ylabel='Gradient Norm',
-                        title='Gradient Norm Evolution',
-                        legend=True,
-                        tight_layout=False)
-        
-        # 梯度裁剪比例
-        ax = axes[1]
-        for i, (method, stats) in enumerate(grad_stats.items()):
-            if 'clip_ratio' in stats:
-                epochs = np.arange(1, len(stats['clip_ratio']) + 1)
-                ax.plot(epochs, stats['clip_ratio'],
-                       label=method, color=self.colors[i], linewidth=2)
-                       
-        apply_axis_style(ax,
-                        ylabel='Clip Ratio',
-                        title='Gradient Clipping Ratio',
-                        legend=False,
-                        tight_layout=False)
-        
-        # 更新比例（参数更新量/参数值）
-        ax = axes[2]
-        for i, (method, stats) in enumerate(grad_stats.items()):
-            if 'update_ratio' in stats:
-                epochs = np.arange(1, len(stats['update_ratio']) + 1)
-                ax.plot(epochs, stats['update_ratio'],
-                       label=method, color=self.colors[i], linewidth=2)
-                       
-        ax.set_yscale('log')
-        apply_axis_style(ax,
-                        xlabel='Epoch',
-                        ylabel='Update Ratio',
-                        title='Parameter Update Ratio',
-                        legend=False,
-                        tight_layout=False)
-        
-        plt.tight_layout()
-        return fig
-        
-    def plot_convergence_comparison(self,
-                                  histories: Dict[str, Dict[str, List[float]]],
-                                  metric: str = 'val_loss',
-                                  figsize: Optional[Tuple] = None,
-                                  show_variance: bool = True) -> plt.Figure:
-        """绘制收敛性对比（多次运行）
-        
-        Args:
-            histories: 训练历史（可包含多次运行）
-            metric: 要比较的指标
-            figsize: 图形大小
-            show_variance: 是否显示方差带
-        """
-        if figsize is None:
-            figsize = PlotConfig.get_figure_size('double', aspect_ratio=0.618)
-            
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        for i, (method, history) in enumerate(histories.items()):
-            if metric in history:
-                values = history[metric]
-                
-                # 如果是多次运行的结果（二维数组）
-                if isinstance(values[0], list):
-                    values_array = np.array(values)
-                    mean_values = np.mean(values_array, axis=0)
-                    std_values = np.std(values_array, axis=0)
-                    epochs = np.arange(1, len(mean_values) + 1)
-                    
-                    # 绘制均值曲线
-                    ax.plot(epochs, mean_values,
-                           label=method, color=self.colors[i], linewidth=2)
-                    
-                    # 绘制方差带
-                    if show_variance:
-                        ax.fill_between(epochs,
-                                      mean_values - std_values,
-                                      mean_values + std_values,
-                                      alpha=0.3, color=self.colors[i])
-                else:
-                    # 单次运行
-                    epochs = np.arange(1, len(values) + 1)
-                    ax.plot(epochs, values,
-                           label=method, color=self.colors[i], linewidth=2)
-                           
-        apply_axis_style(ax,
-                        xlabel='Epoch',
-                        ylabel=metric.replace('_', ' ').title(),
-                        title='Convergence Comparison',
-                        legend=True)
-        
-        # 添加网格
-        ax.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        return fig
-        
-    def plot_early_stopping_analysis(self,
-                                   histories: Dict[str, Dict[str, List[float]]],
-                                   patience: int = 10,
-                                   figsize: Optional[Tuple] = None) -> plt.Figure:
-        """分析早停行为
-        
-        Args:
-            histories: 训练历史
-            patience: 早停耐心值
-            figsize: 图形大小
-        """
-        if figsize is None:
-            figsize = PlotConfig.get_figure_size('double', aspect_ratio=0.618)
-            
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize, sharex=True)
-        
-        early_stop_epochs = {}
-        
-        for i, (method, history) in enumerate(histories.items()):
-            if 'val_loss' in history:
-                val_losses = history['val_loss']
-                epochs = np.arange(1, len(val_losses) + 1)
-                
-                # 绘制验证损失
-                ax1.plot(epochs, val_losses,
-                        label=method, color=self.colors[i], linewidth=2)
-                
-                # 计算早停点
-                best_loss = float('inf')
-                best_epoch = 0
-                wait = 0
-                
-                for epoch, loss in enumerate(val_losses):
-                    if loss < best_loss:
-                        best_loss = loss
-                        best_epoch = epoch
-                        wait = 0
-                    else:
-                        wait += 1
-                        
-                    if wait >= patience:
-                        early_stop_epochs[method] = epoch + 1
-                        break
-                        
-                # 标记早停点
-                if method in early_stop_epochs:
-                    stop_epoch = early_stop_epochs[method]
-                    ax1.axvline(x=stop_epoch, color=self.colors[i],
-                               linestyle='--', alpha=0.7)
-                    ax1.plot(stop_epoch, val_losses[stop_epoch-1],
-                            'o', color=self.colors[i], markersize=8)
-                            
-        # 绘制相对改进
-        for i, (method, history) in enumerate(histories.items()):
-            if 'val_loss' in history:
-                val_losses = history['val_loss']
-                epochs = np.arange(1, len(val_losses) + 1)
-                
-                # 计算相对改进
-                improvements = []
-                for j in range(1, len(val_losses)):
-                    imp = (val_losses[j-1] - val_losses[j]) / val_losses[j-1] * 100
-                    improvements.append(imp)
-                    
-                ax2.plot(epochs[1:], improvements,
-                        label=method, color=self.colors[i], linewidth=2)
-                        
-        # 添加零线
-        ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        
-        apply_axis_style(ax1,
-                        ylabel='Validation Loss',
-                        title='Early Stopping Analysis',
-                        legend=True,
-                        tight_layout=False)
-                        
-        apply_axis_style(ax2,
-                        xlabel='Epoch',
-                        ylabel='Relative Improvement (%)',
-                        legend=False,
-                        tight_layout=False)
-        
-        plt.tight_layout()
-        return fig
 
 
-# 便捷函数
-def plot_training_curves(histories: Dict[str, Dict[str, List[float]]],
-                       save_path: Optional[str] = None) -> plt.Figure:
-    """快速绘制训练曲线"""
-    plotter = ConvergencePlotter()
-    fig = plotter.plot_loss_curves(histories)
-    
-    if save_path:
-        from .plot_config import save_figure
-        save_figure(fig, save_path)
-        
-    return fig
+def get_color_palette(palette_name: str = 'academic', n_colors: int = 10) -> List:
+    """获取颜色方案
+
+    Args:
+        palette_name: 方案名称
+        n_colors: 颜色数量
+
+    Returns:
+        颜色列表
+    """
+    if palette_name in PlotConfig.COLOR_PALETTES:
+        palette = PlotConfig.COLOR_PALETTES[palette_name]
+    else:
+        palette = sns.color_palette("tab10", n_colors)
+
+    return palette[:n_colors]
 
 
-def plot_validation_curves(histories: Dict[str, Dict[str, List[float]]],
-                         save_path: Optional[str] = None) -> plt.Figure:
-    """快速绘制验证曲线对比"""
-    plotter = ConvergencePlotter()
-    fig = plotter.plot_metric_comparison(histories)
-    
-    if save_path:
-        from .plot_config import save_figure
-        save_figure(fig, save_path)
-        
-    return fig
+def get_marker_styles(n_markers: int = 10) -> List[Dict]:
+    """获取标记样式
+
+    Args:
+        n_markers: 标记数量
+
+    Returns:
+        标记样式列表
+    """
+    markers = PlotConfig.MARKER_STYLES[:n_markers]
+    return markers
 
 
-def plot_learning_rate_schedule(lr_schedules: Dict[str, List[float]],
-                              save_path: Optional[str] = None) -> plt.Figure:
-    """快速绘制学习率调度"""
-    plotter = ConvergencePlotter()
-    fig = plotter.plot_learning_rate_schedule(lr_schedules)
-    
-    if save_path:
-        from .plot_config import save_figure
-        save_figure(fig, save_path)
-        
-    return fig
+def create_figure_with_subplots(n_rows: int, n_cols: int,
+                              figsize: Optional[Tuple] = None) -> Tuple[plt.Figure, Union[plt.Axes, np.ndarray]]:
+    """创建带子图的图形
+
+    Args:
+        n_rows: 行数
+        n_cols: 列数
+        figsize: 图形大小
+
+    Returns:
+        (图形, 坐标轴)元组
+    """
+    if figsize is None:
+        figsize = PlotConfig.get_subplot_size(n_rows, n_cols)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    return fig, axes
 
 
-def plot_gradient_statistics(grad_stats: Dict[str, Dict[str, List[float]]],
-                           save_path: Optional[str] = None) -> plt.Figure:
-    """快速绘制梯度统计"""
-    plotter = ConvergencePlotter()
-    fig = plotter.plot_gradient_statistics(grad_stats)
-    
-    if save_path:
-        from .plot_config import save_figure
-        save_figure(fig, save_path)
-        
-    return fig
+def add_subplot_labels(axes, labels: Optional[List[str]] = None,
+                     fontsize: int = 12, loc: str = 'upper left'):
+    """添加子图标签
+
+    Args:
+        axes: 坐标轴数组
+        labels: 标签列表
+        fontsize: 字体大小
+        loc: 位置
+    """
+    if not isinstance(axes, np.ndarray):
+        axes = np.array([axes])
+
+    flat_axes = axes.flatten()
+
+    if labels is None:
+        labels = [f'({chr(97+i)})' for i in range(len(flat_axes))]
+
+    for ax, label in zip(flat_axes, labels):
+        ax.text(0.05, 0.95, label, transform=ax.transAxes,
+               fontsize=fontsize, fontweight='bold', va='top')
+
+
+def save_figure(fig: plt.Figure,
+              filename: str,
+              dpi: int = 300,
+              formats: List[str] = ['png', 'pdf']):
+    """保存图形
+
+    Args:
+        fig: 图形对象
+        filename: 文件名
+        dpi: 分辨率
+        formats: 格式列表
+    """
+    # 确保目录存在
+    directory = os.path.dirname(filename)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # 保存为多种格式
+    for fmt in formats:
+        if '.' not in filename:
+            save_path = f"{filename}.{fmt}"
+        else:
+            base, _ = os.path.splitext(filename)
+            save_path = f"{base}.{fmt}"
+
+        fig.savefig(save_path, dpi=dpi, bbox_inches='tight')
+        print(f"图形已保存至: {save_path}")
+

@@ -1,5 +1,3 @@
-
-
 # src/data/preprocessor.py
 import numpy as np
 from typing import Dict, Tuple, Optional
@@ -82,16 +80,6 @@ class DataPreprocessor:
                    ensure_user_in_train: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         划分数据集
-
-        Args:
-            data: 输入数据
-            train_ratio: 训练集比例
-            val_ratio: 验证集比例
-            test_ratio: 测试集比例
-            ensure_user_in_train: 是否确保每个用户在训练集中至少有一个评分
-
-        Returns:
-            训练集、验证集、测试集
         """
         assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "比例之和必须为1"
 
@@ -103,6 +91,15 @@ class DataPreprocessor:
             train_indices, val_indices, test_indices = self._split_with_user_constraint(
                 data, train_ratio, val_ratio, test_ratio
             )
+
+            # 添加调试信息
+            print(f"DEBUG: train_indices类型: {type(train_indices)}, dtype: {train_indices.dtype if hasattr(train_indices, 'dtype') else 'N/A'}")
+            print(f"DEBUG: val_indices类型: {type(val_indices)}, dtype: {val_indices.dtype if hasattr(val_indices, 'dtype') else 'N/A'}")
+            print(f"DEBUG: test_indices类型: {type(test_indices)}, dtype: {test_indices.dtype if hasattr(test_indices, 'dtype') else 'N/A'}")
+
+            if len(train_indices) > 0:
+                print(f"DEBUG: train_indices第一个元素类型: {type(train_indices[0])}")
+
         else:
             # 简单随机划分
             self.rng.shuffle(indices)
@@ -116,7 +113,21 @@ class DataPreprocessor:
         logger.info(f"数据集划分: 训练集 {len(train_indices)}, "
                    f"验证集 {len(val_indices)}, 测试集 {len(test_indices)}")
 
-        return data[train_indices], data[val_indices], data[test_indices]
+        # 确保索引是整数类型，避免索引错误
+        train_indices = np.asarray(train_indices, dtype=int)
+        val_indices = np.asarray(val_indices, dtype=int)
+        test_indices = np.asarray(test_indices, dtype=int)
+
+        # 添加更多调试信息
+        try:
+            return data[train_indices], data[val_indices], data[test_indices]
+        except Exception as e:
+            print(f"DEBUG: 索引错误详情: {str(e)}")
+            print(f"DEBUG: data形状: {data.shape}, 类型: {data.dtype}")
+            print(f"DEBUG: 最终train_indices类型: {train_indices.dtype}, 样例: {train_indices[:5]}")
+            print(f"DEBUG: 最终val_indices类型: {val_indices.dtype}, 样例: {val_indices[:5]}")
+            print(f"DEBUG: 最终test_indices类型: {test_indices.dtype}, 样例: {test_indices[:5]}")
+            raise
 
     def _split_with_user_constraint(self, data: np.ndarray,
                                    train_ratio: float,
@@ -148,25 +159,59 @@ class DataPreprocessor:
                 remaining = user_indices[1:]
                 n_remaining = len(remaining)
 
+                if n_remaining == 0:
+                    continue
+
                 # 计算应该分配给训练集的额外数量
                 # 考虑到已经分配了一个，调整比例
                 adjusted_train_ratio = (train_ratio * (n_remaining + 1) - 1) / n_remaining
                 adjusted_train_ratio = max(0, min(1, adjusted_train_ratio))  # 确保在[0,1]范围内
 
-                n_train_extra = int(n_remaining * adjusted_train_ratio)
-                n_val = int(n_remaining * val_ratio / (val_ratio + test_ratio) * (1 - adjusted_train_ratio))
+                # 确保所有计算结果都是整数
+                n_train_extra = int(np.round(n_remaining * adjusted_train_ratio))
+
+                # 计算验证集和测试集的数量
+                remaining_after_train = n_remaining - n_train_extra
+                if remaining_after_train > 0:
+                    val_test_ratio = val_ratio / (val_ratio + test_ratio) if (val_ratio + test_ratio) > 0 else 0.5
+                    n_val = int(np.round(remaining_after_train * val_test_ratio))
+                    n_test = remaining_after_train - n_val
+                else:
+                    n_val = 0
+                    n_test = 0
+
+                # 确保索引分配不超出范围
+                n_train_extra = min(n_train_extra, n_remaining)
+                n_val = min(n_val, n_remaining - n_train_extra)
+                n_test = n_remaining - n_train_extra - n_val
 
                 # 分配额外的训练样本
-                train_indices.extend(remaining[:n_train_extra])
+                if n_train_extra > 0:
+                    train_indices.extend(remaining[:n_train_extra])
+
                 # 分配验证样本
-                val_indices.extend(remaining[n_train_extra:n_train_extra + n_val])
+                if n_val > 0:
+                    val_indices.extend(remaining[n_train_extra:n_train_extra + n_val])
+
                 # 分配测试样本
-                test_indices.extend(remaining[n_train_extra + n_val:])
+                if n_test > 0:
+                    test_indices.extend(remaining[n_train_extra + n_val:n_train_extra + n_val + n_test])
 
-        logger.info(f"用户约束划分结果: 训练集 {len(train_indices)}, "
-                   f"验证集 {len(val_indices)}, 测试集 {len(test_indices)}")
+        # 添加调试信息
+        print(f"DEBUG: 划分前 - train_indices类型: {type(train_indices)}, 长度: {len(train_indices)}")
+        print(f"DEBUG: 划分前 - 前5个train_indices: {train_indices[:5] if len(train_indices) >= 5 else train_indices}")
 
-        return np.array(train_indices), np.array(val_indices), np.array(test_indices)
+        # 显式转换为整数类型的numpy数组
+        train_indices_array = np.array(train_indices, dtype=int)
+        val_indices_array = np.array(val_indices, dtype=int)
+        test_indices_array = np.array(test_indices, dtype=int)
+
+        # 添加更多调试信息
+        print(f"DEBUG: 划分后 - train_indices类型: {type(train_indices_array)}, dtype: {train_indices_array.dtype}")
+        print(f"DEBUG: 划分后 - val_indices类型: {type(val_indices_array)}, dtype: {val_indices_array.dtype}")
+        print(f"DEBUG: 划分后 - test_indices类型: {type(test_indices_array)}, dtype: {test_indices_array.dtype}")
+
+        return train_indices_array, val_indices_array, test_indices_array
 
     def validate_data(self, data: np.ndarray, rating_scale: Tuple[float, float]) -> bool:
         """

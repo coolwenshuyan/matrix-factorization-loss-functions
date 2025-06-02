@@ -50,9 +50,24 @@ class PerformancePlotter:
         n_metrics = len(metrics)
         
         if figsize is None:
-            figsize = PlotConfig.get_subplot_size(n_metrics, n_metrics)
+            figsize = PlotConfig.get_figure_size('double')
             
-        fig, axes = create_figure_with_subplots(n_metrics, n_metrics, width='double')
+        # 确定子图布局
+        if n_metrics <= 2:
+            n_rows, n_cols = 1, n_metrics
+        elif n_metrics <= 4:
+            n_rows, n_cols = 2, 2
+        else:
+            n_rows = int(np.ceil(n_metrics / 3))
+            n_cols = 3
+            
+        fig, axes = create_figure_with_subplots(n_rows, n_cols, figsize=figsize)
+        
+        # 确保axes是列表形式
+        if n_metrics == 1:
+            axes = [axes]
+        elif isinstance(axes, np.ndarray):
+            axes = axes.flatten()[:n_metrics]
         
         for idx, (ax, metric) in enumerate(zip(axes, metrics)):
             # 准备数据
@@ -140,7 +155,6 @@ class PerformancePlotter:
                         xlabel=col_field.capitalize(),
                         ylabel=row_field.capitalize(),
                         title=f'{metric.upper()} Performance Heatmap',
-                        grid=False,
                         legend=False)
         
         # 调整标签

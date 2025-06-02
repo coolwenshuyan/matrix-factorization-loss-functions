@@ -47,11 +47,76 @@ def main():
     data_manager = DataManager(config)
 
     # 数据文件路径（请根据实际情况修改）
-    data_path = 'dataset/20201202M100K_data_all_random.txt'
+    # 定义支持的数据集及其文件路径
+    DATASETS = {
+        'movielens100k': {
+            'path': 'dataset/20201202M100K_data_all_random.txt',
+            'description': 'MovieLens 100K数据集，包含10万条电影评分'
+        },
+        'netflix': {
+            'path': 'dataset/20201202NetFlix_data_all_random.txt',
+            'description': 'Netflix评分数据集'
+        },
+        'movielens1m': {
+            'path': 'dataset/moive1M20221009randombigthan20bigthan20userbigandeq300.txt',
+            'description': 'MovieLens 1M评分数据集'
+        },
+        'amazonmi': {
+            'path': 'dataset/Amazon_Musical_Instruments20220608random.txt',
+            'description': '亚马逊乐器评分数据集'
+        },
+        'ciaodvd': {
+            'path': 'dataset/ciaodvd20220530random.txt',
+            'description': 'CiaoDVD评分数据集'
+        },
+        'epinions': {
+            'path': 'dataset/Epinions20220531random.txt',
+            'description': 'Epinions评分数据集'
+        },
+        'filmtrust': {
+            'path': 'dataset/flimtrust20220604random.txt',
+            'description': 'FilmTrust评分数据集'
+        },
+        'movietweetings': {
+            'path': 'dataset/moivetweetings20220511random.txt',
+            'description': 'MovieTweetings评分数据集'
+        }
+    }
+
+    # 显示可用数据集并让用户选择
+    print("\n可用数据集:")
+    for i, (name, info) in enumerate(DATASETS.items(), 1):
+        print(f"{i}. {name} - {info['description']}")
+
+    # 获取用户选择
+    while True:
+        try:
+            choice = input("\n请选择数据集 (1-8，直接回车默认选择MovieLens100K): ").strip()
+
+            # 默认选择
+            if not choice:
+                selected_dataset = 'movielens100k'
+                break
+
+            # 数字选择
+            choice_idx = int(choice)
+            if 1 <= choice_idx <= len(DATASETS):
+                selected_dataset = list(DATASETS.keys())[choice_idx-1]
+                break
+            else:
+                print(f"错误: 请输入1到{len(DATASETS)}之间的数字")
+        except ValueError:
+            print("错误: 请输入有效的数字")
+
+    # 获取所选数据集的路径
+    data_path = DATASETS[selected_dataset]['path']
+    print(f"\n已选择: {selected_dataset} - {DATASETS[selected_dataset]['description']}")
+    print(f"数据路径: {data_path}")
 
     try:
         # 加载和预处理数据（链式调用）
-        data_manager.load_dataset('movielens100k', data_path).preprocess()
+        # 使用选择的数据集名称而不是硬编码的'movielens100k'
+        data_manager.load_dataset(selected_dataset, data_path).preprocess()
 
         # 打印数据摘要
         data_manager.print_summary()
@@ -219,3 +284,5 @@ if __name__ == "__main__":
     print("3. 根据需要调整配置参数")
     print("4. 运行后会自动完成数据加载、预处理和批处理")
     print("=" * 60)
+
+
