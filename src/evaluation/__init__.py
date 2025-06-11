@@ -3,7 +3,7 @@ from .metrics import (
     MAE, RMSE, MSE, R2Score,
     HitRate, Precision, Recall, MAP, NDCG, MRR,
     CatalogCoverage, UserCoverage, Diversity,
-    Novelty, Serendipity
+    Novelty, Serendipity,MetricFactory
 )
 from .evaluator import Evaluator, ModelEvaluator
 from .ranking import RankingEvaluator, TopKGenerator

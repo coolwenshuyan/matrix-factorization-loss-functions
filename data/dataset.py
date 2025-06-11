@@ -414,3 +414,157 @@ class MovieTweetings(BaseDataset):
             logger.error(f"加载 {self.name} 数据集失败: {str(e)}")
             raise
 
+# 在 dataset.py 文件末尾添加以下类（在 MovieTweetings 类之后）
+
+class GenericDataset(BaseDataset):
+    """通用数据集类，支持任意路径的数据文件"""
+
+    def __init__(self, data_path: str, name: str = "Generic",
+                 rating_scale: Tuple[float, float] = (1, 5),
+                 format_type: str = "bracket"):
+        """
+        初始化通用数据集
+
+        Args:
+            data_path: 数据文件路径
+            name: 数据集名称（可自定义）
+            rating_scale: 评分范围，默认(1,5)
+            format_type: 数据格式类型，支持"bracket"([user,item,rating])、"tab"(制表符分隔)、"comma"(逗号分隔)、"space"(空格分隔)
+        """
+        super().__init__(name, data_path)
+        self.rating_scale = rating_scale
+        self.format_type = format_type
+
+    def load_raw_data(self) -> np.ndarray:
+        """加载通用格式的数据"""
+        try:
+            data_list = []
+            with open(self.data_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    parsed_data = self._parse_line(line.strip())
+                    if parsed_data:
+                        data_list.append(parsed_data)
+                    elif line.strip():  # 跳过空行但记录解析失败的行
+                        logger.warning(f"第{line_num}行解析失败: {line.strip()[:50]}...")
+
+            if not data_list:
+                raise ValueError(f"未能从 {self.data_path} 加载任何有效数据")
+
+            self.raw_data = np.array(data_list, dtype=np.float32)
+            logger.info(f"成功加载 {self.name} 数据集: {len(self.raw_data)} 条评分")
+            return self.raw_data
+
+        except FileNotFoundError:
+            logger.error(f"数据文件不存在: {self.data_path}")
+            raise
+        except Exception as e:
+            logger.error(f"加载 {self.name} 数据集失败: {str(e)}")
+            raise
+
+    def _parse_line(self, line: str) -> Optional[List[float]]:
+        """解析数据行，支持多种格式"""
+        if not line:
+            return None
+
+        try:
+            if self.format_type == "bracket":
+                # 处理 [user_id, item_id, rating] 格式（你现在使用的格式）
+                if line.startswith('[') and line.endswith(']'):
+                    parts = line[1:-1].split(',')
+                    if len(parts) == 3:
+                        user_id = self._parse_id(parts[0].strip())
+                        item_id = self._parse_id(parts[1].strip())
+                        rating = float(parts[2].strip())
+                        return [user_id, item_id, rating]
+
+            elif self.format_type == "tab":
+                # 处理制表符分隔格式
+                parts = line.split('\t')
+                if len(parts) >= 3:
+                    user_id = self._parse_id(parts[0].strip())
+                    item_id = self._parse_id(parts[1].strip())
+                    rating = float(parts[2].strip())
+                    return [user_id, item_id, rating]
+
+            elif self.format_type == "comma":
+                # 处理逗号分隔格式
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    user_id = self._parse_id(parts[0].strip())
+                    item_id = self._parse_id(parts[1].strip())
+                    rating = float(parts[2].strip())
+                    return [user_id, item_id, rating]
+
+            elif self.format_type == "space":
+                # 处理空格分隔格式
+                parts = line.split()
+                if len(parts) >= 3:
+                    user_id = self._parse_id(parts[0])
+                    item_id = self._parse_id(parts[1])
+                    rating = float(parts[2])
+                    return [user_id, item_id, rating]
+
+        except (ValueError, TypeError, IndexError) as e:
+            logger.debug(f"解析行失败: {line[:50]}..., 错误: {e}")
+            return None
+
+        return None
+
+    def _parse_id(self, id_str: str) -> int:
+        """解析ID，支持整数和浮点数格式"""
+        try:
+            if '.' in id_str:
+                return int(float(id_str))
+            else:
+                return int(id_str)
+        except (ValueError, TypeError):
+            raise ValueError(f"无法解析ID: {id_str}")
+
+    def auto_detect_format(self) -> str:
+        """自动检测数据格式"""
+        try:
+            with open(self.data_path, 'r', encoding='utf-8') as f:
+                # 读取前几行来检测格式
+                for _ in range(10):
+                    line = f.readline().strip()
+                    if not line:
+                        continue
+
+                    # 检测括号格式
+                    if line.startswith('[') and line.endswith(']') and ',' in line:
+                        return "bracket"
+                    # 检测制表符格式
+                    elif '\t' in line and len(line.split('\t')) >= 3:
+                        return "tab"
+                    # 检测逗号格式（不在括号内）
+                    elif ',' in line and not line.startswith('[') and len(line.split(',')) >= 3:
+                        return "comma"
+                    # 检测空格格式
+                    elif ' ' in line and len(line.split()) >= 3:
+                        return "space"
+
+        except Exception as e:
+            logger.warning(f"自动检测格式失败: {e}")
+
+        # 默认返回bracket格式
+        return "bracket"
+
+    def auto_detect_rating_scale(self) -> Tuple[float, float]:
+        """自动检测评分范围"""
+        if self.raw_data is not None:
+            ratings = self.raw_data[:, 2]
+            min_rating = float(np.min(ratings))
+            max_rating = float(np.max(ratings))
+
+            # 常见的评分范围
+            common_scales = [(1, 5), (1, 10), (0, 1), (0.5, 4.0), (1, 100)]
+
+            for scale in common_scales:
+                if min_rating >= scale[0] and max_rating <= scale[1]:
+                    return scale
+
+            # 如果没有匹配的常见范围，使用实际范围
+            return (min_rating, max_rating)
+
+        # 默认范围
+        return (1, 5)

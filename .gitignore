@@ -65,3 +65,5 @@ visualizations/
 tables/
 tests/
 example/
+sms_notification.py
+*.html

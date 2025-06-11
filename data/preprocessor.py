@@ -92,14 +92,6 @@ class DataPreprocessor:
                 data, train_ratio, val_ratio, test_ratio
             )
 
-            # 添加调试信息
-            print(f"DEBUG: train_indices类型: {type(train_indices)}, dtype: {train_indices.dtype if hasattr(train_indices, 'dtype') else 'N/A'}")
-            print(f"DEBUG: val_indices类型: {type(val_indices)}, dtype: {val_indices.dtype if hasattr(val_indices, 'dtype') else 'N/A'}")
-            print(f"DEBUG: test_indices类型: {type(test_indices)}, dtype: {test_indices.dtype if hasattr(test_indices, 'dtype') else 'N/A'}")
-
-            if len(train_indices) > 0:
-                print(f"DEBUG: train_indices第一个元素类型: {type(train_indices[0])}")
-
         else:
             # 简单随机划分
             self.rng.shuffle(indices)
@@ -118,16 +110,7 @@ class DataPreprocessor:
         val_indices = np.asarray(val_indices, dtype=int)
         test_indices = np.asarray(test_indices, dtype=int)
 
-        # 添加更多调试信息
-        try:
-            return data[train_indices], data[val_indices], data[test_indices]
-        except Exception as e:
-            print(f"DEBUG: 索引错误详情: {str(e)}")
-            print(f"DEBUG: data形状: {data.shape}, 类型: {data.dtype}")
-            print(f"DEBUG: 最终train_indices类型: {train_indices.dtype}, 样例: {train_indices[:5]}")
-            print(f"DEBUG: 最终val_indices类型: {val_indices.dtype}, 样例: {val_indices[:5]}")
-            print(f"DEBUG: 最终test_indices类型: {test_indices.dtype}, 样例: {test_indices[:5]}")
-            raise
+        return data[train_indices], data[val_indices], data[test_indices]
 
     def _split_with_user_constraint(self, data: np.ndarray,
                                    train_ratio: float,
@@ -197,19 +180,10 @@ class DataPreprocessor:
                 if n_test > 0:
                     test_indices.extend(remaining[n_train_extra + n_val:n_train_extra + n_val + n_test])
 
-        # 添加调试信息
-        print(f"DEBUG: 划分前 - train_indices类型: {type(train_indices)}, 长度: {len(train_indices)}")
-        print(f"DEBUG: 划分前 - 前5个train_indices: {train_indices[:5] if len(train_indices) >= 5 else train_indices}")
-
         # 显式转换为整数类型的numpy数组
         train_indices_array = np.array(train_indices, dtype=int)
         val_indices_array = np.array(val_indices, dtype=int)
         test_indices_array = np.array(test_indices, dtype=int)
-
-        # 添加更多调试信息
-        print(f"DEBUG: 划分后 - train_indices类型: {type(train_indices_array)}, dtype: {train_indices_array.dtype}")
-        print(f"DEBUG: 划分后 - val_indices类型: {type(val_indices_array)}, dtype: {val_indices_array.dtype}")
-        print(f"DEBUG: 划分后 - test_indices类型: {type(test_indices_array)}, dtype: {test_indices_array.dtype}")
 
         return train_indices_array, val_indices_array, test_indices_array
 
